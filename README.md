@@ -8,14 +8,14 @@
 
 A fast, Rust-powered Python reader for CERN ROOT files.
 
-This package provides a simple and Pythonic interface bindings to `oxyroot`, a rust package, to read data from `.root` files, inspired by libraries like `uproot`. It leverages the speed of Rust for high-performance data extraction and integrates with the scientific Python ecosystem by providing data as NumPy arrays.
+This python package provides simple bindings to [`oxyroot`, a rust package](https://github.com/m-dupont/oxyroot), to read data from `.root` files, inspired by libraries like `uproot`. It leverages the speed of Rust and integrates with the scientific Python ecosystem by providing data as NumPy arrays or polars dataframes.
 
 ## Features
 
-- **High-Performance**: Core logic is written in Rust for maximum speed.
-- **Parquet Conversion**: Convert TTrees directly to Apache Parquet files with a single command.
-- **NumPy Integration**: Get branch data directly as NumPy arrays.
-- **Simple, Pythonic API**: Easy to learn and use, and similar to `uproot`
+- Simple API similar to `uproot`
+- Core logic is written in Rust.
+- Get branch data directly as NumPy arrays or Polars dataframe.
+- Parquet Conversion: Convert TTrees directly to Apache Parquet files with a single command.
 
 ## Quick Start
 
@@ -60,7 +60,7 @@ tree.to_parquet(
 
 ## Performance
 
-`oxyroot` is designed to be fast. Here is a simple benchmark comparing the time taken to read all branches of a TTree with `uproot` and `oxyroot`.
+`oxyroot` is intended to be fast. Here is a simple benchmark comparing the time taken to read all branches of a TTree with `uproot` and `oxyroot`.
 
 ```python
 import oxyroot
@@ -87,6 +87,8 @@ for branch in oxy_tree:
 end_time = time.time()
 print(f"Oxyroot took: {end_time - start_time:.3f}s")
 ```
+
+On a small file (~20 MB) with multiple data formats, oxyroot took half the time of uproot, and also read in the branch with strings!
 
 ## License
 

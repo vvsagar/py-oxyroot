@@ -14,6 +14,8 @@ use arrow::record_batch::RecordBatch;
 use parquet::arrow::ArrowWriter;
 use parquet::basic::{BrotliLevel, Compression, GzipLevel, ZstdLevel};
 use parquet::file::properties::WriterProperties;
+use polars::prelude::*;
+use pyo3_polars::PyDataFrame;
 
 #[pyclass(name = "RootFile")]
 struct PyRootFile {
@@ -92,6 +94,73 @@ impl PyTree {
                 branches: branches.into_iter(),
             },
         )
+    }
+
+    #[pyo3(signature = (columns = None))]
+    fn arrays(&self, columns: Option<Vec<String>>) -> PyResult<PyDataFrame> {
+        let mut file =
+            RootFile::open(&self.path).map_err(|e| PyValueError::new_err(e.to_string()))?;
+        let tree = file
+            .get_tree(&self.name)
+            .map_err(|e| PyValueError::new_err(e.to_string()))?;
+
+        let branches_to_save = if let Some(columns) = columns {
+            columns
+        } else {
+            tree.branches().map(|b| b.name().to_string()).collect()
+        };
+
+        let mut series_vec = Vec::new();
+
+        for branch_name in branches_to_save {
+            let branch = match tree.branch(&branch_name) {
+                Some(branch) => branch,
+                None => {
+                    println!("Branch '{}' not found, skipping", branch_name);
+                    continue;
+                }
+            };
+
+            let series = match branch.item_type_name().as_str() {
+                "float" => {
+                    let data = branch.as_iter::<f32>().unwrap().collect::<Vec<_>>();
+                    Series::new((&branch_name).into(), data)
+                }
+                "double" => {
+                    let data = branch.as_iter::<f64>().unwrap().collect::<Vec<_>>();
+                    Series::new((&branch_name).into(), data)
+                }
+                "int32_t" => {
+                    let data = branch.as_iter::<i32>().unwrap().collect::<Vec<_>>();
+                    Series::new((&branch_name).into(), data)
+                }
+                "int64_t" => {
+                    let data = branch.as_iter::<i64>().unwrap().collect::<Vec<_>>();
+                    Series::new((&branch_name).into(), data)
+                }
+                "uint32_t" => {
+                    let data = branch.as_iter::<u32>().unwrap().collect::<Vec<_>>();
+                    Series::new((&branch_name).into(), data)
+                }
+                "uint64_t" => {
+                    let data = branch.as_iter::<u64>().unwrap().collect::<Vec<_>>();
+                    Series::new((&branch_name).into(), data)
+                }
+                "string" => {
+                    let data = branch.as_iter::<String>().unwrap().collect::<Vec<_>>();
+                    Series::new((&branch_name).into(), data)
+                }
+                other => {
+                    println!("Unsupported branch type: {}, skipping", other);
+                    continue;
+                }
+            };
+            series_vec.push(series);
+        }
+
+        let df = DataFrame::new(series_vec.into_iter().map(|s| s.into()).collect())
+            .map_err(|e| PyValueError::new_err(e.to_string()))?;
+        Ok(PyDataFrame(df))
     }
 
     #[pyo3(signature = (output_file, overwrite = false, compression = "snappy", columns = None))]
