@@ -12,6 +12,8 @@ use arrow::array::{
 use arrow::datatypes::{DataType, Field, Schema};
 use arrow::record_batch::RecordBatch;
 use parquet::arrow::ArrowWriter;
+use parquet::basic::{BrotliLevel, Compression, GzipLevel, ZstdLevel};
+use parquet::file::properties::WriterProperties;
 
 #[pyclass(name = "RootFile")]
 struct PyRootFile {
@@ -92,11 +94,28 @@ impl PyTree {
         )
     }
 
-    #[pyo3(signature = (output_file, overwrite = false))]
-    fn to_parquet(&self, output_file: String, overwrite: bool) -> PyResult<()> {
+    #[pyo3(signature = (output_file, overwrite = false, compression = "snappy", columns = None))]
+    fn to_parquet(
+        &self,
+        output_file: String,
+        overwrite: bool,
+        compression: &str,
+        columns: Option<Vec<String>>,
+    ) -> PyResult<()> {
         if !overwrite && Path::new(&output_file).exists() {
             return Err(PyValueError::new_err("File exists, use overwrite=True"));
         }
+
+        let compression = match compression {
+            "snappy" => Compression::SNAPPY,
+            "uncompressed" => Compression::UNCOMPRESSED,
+            "gzip" => Compression::GZIP(GzipLevel::default()),
+            "lzo" => Compression::LZO,
+            "brotli" => Compression::BROTLI(BrotliLevel::default()),
+            "lz4" => Compression::LZ4,
+            "zstd" => Compression::ZSTD(ZstdLevel::default()),
+            _ => return Err(PyValueError::new_err("Invalid compression type")),
+        };
 
         let mut file =
             RootFile::open(&self.path).map_err(|e| PyValueError::new_err(e.to_string()))?;
@@ -105,10 +124,23 @@ impl PyTree {
             .map_err(|e| PyValueError::new_err(e.to_string()))?;
 
         let mut fields = Vec::new();
-        let mut columns = Vec::new();
+        let mut arrays = Vec::new();
 
-        for branch in tree.branches() {
-            let branch_name = branch.name().to_string();
+        let branches_to_save = if let Some(columns) = columns {
+            columns
+        } else {
+            tree.branches().map(|b| b.name().to_string()).collect()
+        };
+
+        for branch_name in branches_to_save {
+            let branch = match tree.branch(&branch_name) {
+                Some(branch) => branch,
+                None => {
+                    println!("Branch '{}' not found, skipping", branch_name);
+                    continue;
+                }
+            };
+
             let (field, array) = match branch.item_type_name().as_str() {
                 "float" => {
                     let data = branch.as_iter::<f32>().unwrap().collect::<Vec<_>>();
@@ -151,14 +183,17 @@ impl PyTree {
                 }
             };
             fields.push(field);
-            columns.push(array);
+            arrays.push(array);
         }
 
         let schema = Arc::new(Schema::new(fields));
-        let batch = RecordBatch::try_new(schema.clone(), columns).unwrap();
+        let props = WriterProperties::builder()
+            .set_compression(compression)
+            .build();
+        let batch = RecordBatch::try_new(schema.clone(), arrays).unwrap();
 
         let file = File::create(output_file)?;
-        let mut writer = ArrowWriter::try_new(file, schema, None)
+        let mut writer = ArrowWriter::try_new(file, schema, Some(props))
             .map_err(|e| PyValueError::new_err(e.to_string()))?;
         writer
             .write(&batch)
