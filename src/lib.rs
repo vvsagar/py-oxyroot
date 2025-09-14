@@ -1,6 +1,17 @@
 use ::oxyroot::{Named, RootFile};
 use numpy::IntoPyArray;
 use pyo3::{exceptions::PyValueError, prelude::*, IntoPyObjectExt};
+use std::fs::File;
+use std::path::Path;
+use std::sync::Arc;
+
+use arrow::array::{
+    ArrayRef, Float32Array, Float64Array, Int32Array, Int64Array, StringArray, UInt32Array,
+    UInt64Array,
+};
+use arrow::datatypes::{DataType, Field, Schema};
+use arrow::record_batch::RecordBatch;
+use parquet::arrow::ArrowWriter;
 
 #[pyclass(name = "RootFile")]
 struct PyRootFile {
@@ -79,6 +90,84 @@ impl PyTree {
                 branches: branches.into_iter(),
             },
         )
+    }
+
+    #[pyo3(signature = (output_file, overwrite = false))]
+    fn to_parquet(&self, output_file: String, overwrite: bool) -> PyResult<()> {
+        if !overwrite && Path::new(&output_file).exists() {
+            return Err(PyValueError::new_err("File exists, use overwrite=True"));
+        }
+
+        let mut file =
+            RootFile::open(&self.path).map_err(|e| PyValueError::new_err(e.to_string()))?;
+        let tree = file
+            .get_tree(&self.name)
+            .map_err(|e| PyValueError::new_err(e.to_string()))?;
+
+        let mut fields = Vec::new();
+        let mut columns = Vec::new();
+
+        for branch in tree.branches() {
+            let branch_name = branch.name().to_string();
+            let (field, array) = match branch.item_type_name().as_str() {
+                "float" => {
+                    let data = branch.as_iter::<f32>().unwrap().collect::<Vec<_>>();
+                    let array: ArrayRef = Arc::new(Float32Array::from(data));
+                    (Field::new(&branch_name, DataType::Float32, false), array)
+                }
+                "double" => {
+                    let data = branch.as_iter::<f64>().unwrap().collect::<Vec<_>>();
+                    let array: ArrayRef = Arc::new(Float64Array::from(data));
+                    (Field::new(&branch_name, DataType::Float64, false), array)
+                }
+                "int32_t" => {
+                    let data = branch.as_iter::<i32>().unwrap().collect::<Vec<_>>();
+                    let array: ArrayRef = Arc::new(Int32Array::from(data));
+                    (Field::new(&branch_name, DataType::Int32, false), array)
+                }
+                "int64_t" => {
+                    let data = branch.as_iter::<i64>().unwrap().collect::<Vec<_>>();
+                    let array: ArrayRef = Arc::new(Int64Array::from(data));
+                    (Field::new(&branch_name, DataType::Int64, false), array)
+                }
+                "uint32_t" => {
+                    let data = branch.as_iter::<u32>().unwrap().collect::<Vec<_>>();
+                    let array: ArrayRef = Arc::new(UInt32Array::from(data));
+                    (Field::new(&branch_name, DataType::UInt32, false), array)
+                }
+                "uint64_t" => {
+                    let data = branch.as_iter::<u64>().unwrap().collect::<Vec<_>>();
+                    let array: ArrayRef = Arc::new(UInt64Array::from(data));
+                    (Field::new(&branch_name, DataType::UInt64, false), array)
+                }
+                "string" => {
+                    let data = branch.as_iter::<String>().unwrap().collect::<Vec<_>>();
+                    let array: ArrayRef = Arc::new(StringArray::from(data));
+                    (Field::new(&branch_name, DataType::Utf8, false), array)
+                }
+                other => {
+                    println!("Unsupported branch type: {}, skipping", other);
+                    continue;
+                }
+            };
+            fields.push(field);
+            columns.push(array);
+        }
+
+        let schema = Arc::new(Schema::new(fields));
+        let batch = RecordBatch::try_new(schema.clone(), columns).unwrap();
+
+        let file = File::create(output_file)?;
+        let mut writer = ArrowWriter::try_new(file, schema, None)
+            .map_err(|e| PyValueError::new_err(e.to_string()))?;
+        writer
+            .write(&batch)
+            .map_err(|e| PyValueError::new_err(e.to_string()))?;
+        writer
+            .close()
+            .map_err(|e| PyValueError::new_err(e.to_string()))?;
+
+        Ok(())
     }
 }
 
