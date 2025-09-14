@@ -5,8 +5,10 @@ edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 [lib]
-name = "py_oxyroot"
+name = "oxyroot"
 crate-type = ["cdylib"]
 
 [dependencies]
-pyo3 = "0.25.0"
+numpy = "0.26.0"
+oxyroot = "0.1.25"
+pyo3 = { version = "0.26.0", features = ["abi3-py38"] }

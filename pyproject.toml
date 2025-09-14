@@ -3,7 +3,7 @@ requires = ["maturin>=1.9,<2.0"]
 build-backend = "maturin"
 
 [project]
-name = "py-oxyroot"
+name = "oxyroot"
 requires-python = ">=3.8"
 classifiers = [
     "Programming Language :: Rust",
@@ -14,6 +14,8 @@ dynamic = ["version"]
 [project.optional-dependencies]
 tests = [
     "pytest",
+    "numpy",
+    "uproot",
 ]
 [tool.maturin]
 python-source = "python"
