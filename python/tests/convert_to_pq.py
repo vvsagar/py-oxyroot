@@ -8,7 +8,7 @@ if __name__ == '__main__':
 
     oxy_start_time = time.time()
     oxy_tree = oxyroot.open(file_name)[tree_name]
-    oxy_tree.to_parquet("ntuples.pq", overwrite=True)
+    oxy_tree.to_parquet("ntuples.pq", overwrite=True, compression="zstd")
     oxy_end_time = time.time()
 
     print("\n Total time")
