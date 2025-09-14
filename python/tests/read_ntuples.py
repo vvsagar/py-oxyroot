@@ -10,24 +10,25 @@ if __name__ == '__main__':
 
     up_start_time = time.time()
     up_tree = uproot.open(file_name)[tree_name]
-    for branch in up_tree.keys():
-        # print(branch, up_tree[branch].typename)
-        if up_tree[branch].typename != "std::string":
-            up_values = up_tree[branch].array(library="np")
-            print(f"Uproot read {branch} into a {type(up_values)} and it has a mean of {np.nanmean(up_values):.2f}") 
+    for branch in up_tree:
+        # print(branch, branch.typename)
+        if branch.typename != "std::string": # Uproot cannot read strings?
+            up_values = branch.array(library="np")
+            print(f"Uproot read {branch.name} into a {type(up_values)} and it has a mean of {np.nanmean(up_values):.2f}") 
     up_end_time = time.time()
     
     print("\n")
 
     oxy_start_time = time.time()
-    oxy_branches = oxyroot.read_root(file_name, tree_name=tree_name)
-    for branch in oxy_branches:
-        oxyroot.read_root(file_name, tree_name=tree_name, branch=branch)
-        oxy_values = oxyroot.read_root(file_name, tree_name=tree_name, branch=branch)
+    oxy_tree = oxyroot.open(file_name)[tree_name]
+    for branch in oxy_tree:
+        # print(branch, branch.typename)
+        # if branch.typename != "string":
+        oxy_values = branch.array()
         if type(oxy_values) is np.ndarray:
-            print(f"Oxyroot read {branch} into a {type(oxy_values)} and it has a mean of {np.nanmean(oxy_values):.2f}")
+            print(f"Oxyroot read {branch.name} into a {type(oxy_values)} and it has a mean of {np.nanmean(oxy_values):.2f}")
         else:
-            print(f"Oxyroot read {branch} into a {type(oxy_values)} and it has a length of {len(oxy_values)}")
+            print(f"Oxyroot read {branch.name} into a {type(oxy_values)} and it has a length of {len(oxy_values)}")
     oxy_end_time = time.time()
 
     print("\n Total time")

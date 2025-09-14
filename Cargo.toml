@@ -9,6 +9,7 @@ name = "oxyroot"
 crate-type = ["cdylib"]
 
 [dependencies]
-numpy = "0.26.0"
 oxyroot = "0.1.25"
 pyo3 = { version = "0.26.0", features = ["abi3-py38"] }
+parking_lot = "0.12.3"
+numpy = "0.26.0"

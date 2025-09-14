@@ -1,8 +1,9 @@
-import pytest
 import oxyroot
 import uproot
 import numpy as np
 import os
+
+print(oxyroot.__version__)
 
 def test_read_from_uproot():
     # Create a dummy ROOT file for testing
@@ -15,7 +16,7 @@ def test_read_from_uproot():
         f["tree1"].extend({"branch1": input})
         
 
-    output = oxyroot.read_root(file_name, tree_name="tree1", branch="branch1")
+    output = oxyroot.open(file_name)["tree1"]["branch1"].array()
     assert(type(output) is np.ndarray)
     assert(np.array_equal(input, output))
 
