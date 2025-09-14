@@ -5,3 +5,5 @@ __version__: str = oxyroot.version()
 
 if hasattr(oxyroot, "__all__"):
     __all__ = oxyroot.__all__
+
+__all__.remove('version')
