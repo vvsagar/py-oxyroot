@@ -11,11 +11,34 @@ use arrow::array::{
 };
 use arrow::datatypes::{DataType, Field, Schema};
 use arrow::record_batch::RecordBatch;
+use once_cell::sync::Lazy;
+use parking_lot::Mutex;
 use parquet::arrow::ArrowWriter;
 use parquet::basic::{BrotliLevel, Compression, GzipLevel, ZstdLevel};
 use parquet::file::properties::WriterProperties;
 use polars::prelude::*;
+use polars_core::utils::concat_df;
 use pyo3_polars::PyDataFrame;
+use rayon::prelude::*;
+
+static POOL: Lazy<Mutex<rayon::ThreadPool>> = Lazy::new(|| {
+    let num_threads = std::cmp::max(1, num_cpus::get() / 2);
+    let pool = rayon::ThreadPoolBuilder::new()
+        .num_threads(num_threads)
+        .build()
+        .unwrap();
+    Mutex::new(pool)
+});
+
+#[pyfunction]
+fn set_num_threads(num_threads: usize) -> PyResult<()> {
+    let pool = rayon::ThreadPoolBuilder::new()
+        .num_threads(num_threads)
+        .build()
+        .map_err(|e| PyValueError::new_err(e.to_string()))?;
+    *POOL.lock() = pool;
+    Ok(())
+}
 
 #[pyclass(name = "RootFile")]
 struct PyRootFile {
@@ -39,6 +62,73 @@ struct PyBranch {
     tree_name: String,
     #[pyo3(get)]
     name: String,
+}
+
+fn tree_to_dataframe(
+    tree: &::oxyroot::ReaderTree,
+    columns: Option<Vec<String>>,
+    ignore_columns: Option<Vec<String>>,
+) -> PyResult<DataFrame> {
+    let mut branches_to_save = if let Some(columns) = columns {
+        columns
+    } else {
+        tree.branches().map(|b| b.name().to_string()).collect()
+    };
+
+    if let Some(ignore_columns) = ignore_columns {
+        branches_to_save.retain(|c| !ignore_columns.contains(c));
+    }
+
+    let mut series_vec = Vec::new();
+
+    for branch_name in branches_to_save {
+        let branch = match tree.branch(&branch_name) {
+            Some(branch) => branch,
+            None => {
+                println!("Branch '{}' not found, skipping", branch_name);
+                continue;
+            }
+        };
+
+        let series = match branch.item_type_name().as_str() {
+            "float" => {
+                let data = branch.as_iter::<f32>().unwrap().collect::<Vec<_>>();
+                Series::new((&branch_name).into(), data)
+            }
+            "double" => {
+                let data = branch.as_iter::<f64>().unwrap().collect::<Vec<_>>();
+                Series::new((&branch_name).into(), data)
+            }
+            "int32_t" => {
+                let data = branch.as_iter::<i32>().unwrap().collect::<Vec<_>>();
+                Series::new((&branch_name).into(), data)
+            }
+            "int64_t" => {
+                let data = branch.as_iter::<i64>().unwrap().collect::<Vec<_>>();
+                Series::new((&branch_name).into(), data)
+            }
+            "uint32_t" => {
+                let data = branch.as_iter::<u32>().unwrap().collect::<Vec<_>>();
+                Series::new((&branch_name).into(), data)
+            }
+            "uint64_t" => {
+                let data = branch.as_iter::<u64>().unwrap().collect::<Vec<_>>();
+                Series::new((&branch_name).into(), data)
+            }
+            "string" => {
+                let data = branch.as_iter::<String>().unwrap().collect::<Vec<_>>();
+                Series::new((&branch_name).into(), data)
+            }
+            other => {
+                println!("Unsupported branch type: {}, skipping", other);
+                continue;
+            }
+        };
+        series_vec.push(series);
+    }
+
+    DataFrame::new(series_vec.into_iter().map(|s| s.into()).collect())
+        .map_err(|e| PyValueError::new_err(e.to_string()))
 }
 
 #[pymethods]
@@ -96,70 +186,18 @@ impl PyTree {
         )
     }
 
-    #[pyo3(signature = (columns = None))]
-    fn arrays(&self, columns: Option<Vec<String>>) -> PyResult<PyDataFrame> {
+    #[pyo3(signature = (columns = None, ignore_columns = None))]
+    fn arrays(
+        &self,
+        columns: Option<Vec<String>>,
+        ignore_columns: Option<Vec<String>>,
+    ) -> PyResult<PyDataFrame> {
         let mut file =
             RootFile::open(&self.path).map_err(|e| PyValueError::new_err(e.to_string()))?;
         let tree = file
             .get_tree(&self.name)
             .map_err(|e| PyValueError::new_err(e.to_string()))?;
-
-        let branches_to_save = if let Some(columns) = columns {
-            columns
-        } else {
-            tree.branches().map(|b| b.name().to_string()).collect()
-        };
-
-        let mut series_vec = Vec::new();
-
-        for branch_name in branches_to_save {
-            let branch = match tree.branch(&branch_name) {
-                Some(branch) => branch,
-                None => {
-                    println!("Branch '{}' not found, skipping", branch_name);
-                    continue;
-                }
-            };
-
-            let series = match branch.item_type_name().as_str() {
-                "float" => {
-                    let data = branch.as_iter::<f32>().unwrap().collect::<Vec<_>>();
-                    Series::new((&branch_name).into(), data)
-                }
-                "double" => {
-                    let data = branch.as_iter::<f64>().unwrap().collect::<Vec<_>>();
-                    Series::new((&branch_name).into(), data)
-                }
-                "int32_t" => {
-                    let data = branch.as_iter::<i32>().unwrap().collect::<Vec<_>>();
-                    Series::new((&branch_name).into(), data)
-                }
-                "int64_t" => {
-                    let data = branch.as_iter::<i64>().unwrap().collect::<Vec<_>>();
-                    Series::new((&branch_name).into(), data)
-                }
-                "uint32_t" => {
-                    let data = branch.as_iter::<u32>().unwrap().collect::<Vec<_>>();
-                    Series::new((&branch_name).into(), data)
-                }
-                "uint64_t" => {
-                    let data = branch.as_iter::<u64>().unwrap().collect::<Vec<_>>();
-                    Series::new((&branch_name).into(), data)
-                }
-                "string" => {
-                    let data = branch.as_iter::<String>().unwrap().collect::<Vec<_>>();
-                    Series::new((&branch_name).into(), data)
-                }
-                other => {
-                    println!("Unsupported branch type: {}, skipping", other);
-                    continue;
-                }
-            };
-            series_vec.push(series);
-        }
-
-        let df = DataFrame::new(series_vec.into_iter().map(|s| s.into()).collect())
-            .map_err(|e| PyValueError::new_err(e.to_string()))?;
+        let df = tree_to_dataframe(&tree, columns, ignore_columns)?;
         Ok(PyDataFrame(df))
     }
 
@@ -390,11 +428,58 @@ fn version() -> PyResult<String> {
     Ok(env!("CARGO_PKG_VERSION").to_string())
 }
 
+#[pyfunction]
+#[pyo3(signature = (paths, tree_name, columns = None, ignore_columns = None))]
+fn concat_trees(
+    paths: Vec<String>,
+    tree_name: String,
+    columns: Option<Vec<String>>,
+    ignore_columns: Option<Vec<String>>,
+) -> PyResult<PyDataFrame> {
+    let mut all_paths = Vec::new();
+    for path in paths {
+        for entry in glob::glob(&path).map_err(|e| PyValueError::new_err(e.to_string()))? {
+            match entry {
+                Ok(path) => {
+                    all_paths.push(path.to_str().unwrap().to_string());
+                }
+                Err(e) => return Err(PyValueError::new_err(e.to_string())),
+            }
+        }
+    }
+
+    let pool = POOL.lock();
+    let dfs: Vec<DataFrame> = pool.install(|| {
+        all_paths
+            .par_iter()
+            .map(|path| {
+                let mut file =
+                    RootFile::open(path).map_err(|e| PyValueError::new_err(e.to_string()))?;
+                let tree = file
+                    .get_tree(&tree_name)
+                    .map_err(|e| PyValueError::new_err(e.to_string()))?;
+                tree_to_dataframe(&tree, columns.clone(), ignore_columns.clone())
+            })
+            .filter_map(Result::ok)
+            .collect()
+    });
+
+    if dfs.is_empty() {
+        return Ok(PyDataFrame(DataFrame::default()));
+    }
+
+    let combined_df = concat_df(&dfs).map_err(|e| PyValueError::new_err(e.to_string()))?;
+
+    Ok(PyDataFrame(combined_df))
+}
+
 /// A Python module to read root files, implemented in Rust.
 #[pymodule]
 fn oxyroot(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(version, m)?)?;
     m.add_function(wrap_pyfunction!(open, m)?)?;
+    m.add_function(wrap_pyfunction!(concat_trees, m)?)?;
+    m.add_function(wrap_pyfunction!(set_num_threads, m)?)?;
     m.add_class::<PyRootFile>()?;
     m.add_class::<PyTree>()?;
     m.add_class::<PyBranch>()?;

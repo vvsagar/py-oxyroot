@@ -58,6 +58,26 @@ tree.to_parquet(
 )
 ```
 
+## Combining Multiple Files
+
+You can efficiently read and concatenate a TTree from multiple ROOT files into a single Polars DataFrame using `concat_trees`. This function processes files in parallel to maximize performance.
+
+```python
+import oxyroot
+
+# Combine trees from multiple files using a wildcard
+df = oxyroot.concat_trees(paths=["ntuples*.root"], tree_name="mu_mc")
+
+print(df)
+
+# You can also provide a list of specific files
+# df = oxyroot.concat_trees(paths=["file1.root", "file2.root"], tree_name="my_tree")
+
+# Control the number of threads used for parallel processing
+# By default, it uses half the available CPU cores.
+oxyroot.set_num_threads(4)
+```
+
 ## Performance
 
 `oxyroot` is intended to be fast. Here is a simple benchmark comparing the time taken to read all branches of a TTree with `uproot` and `oxyroot`.
