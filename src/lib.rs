@@ -16,8 +16,8 @@ use parking_lot::Mutex;
 use parquet::arrow::ArrowWriter;
 use parquet::basic::{BrotliLevel, Compression, GzipLevel, ZstdLevel};
 use parquet::file::properties::WriterProperties;
+use polars::functions::concat_df_diagonal;
 use polars::prelude::*;
-use polars_core::utils::concat_df;
 use pyo3_polars::PyDataFrame;
 use rayon::prelude::*;
 
@@ -468,7 +468,7 @@ fn concat_trees(
         return Ok(PyDataFrame(DataFrame::default()));
     }
 
-    let combined_df = concat_df(&dfs).map_err(|e| PyValueError::new_err(e.to_string()))?;
+    let combined_df = concat_df_diagonal(&dfs).map_err(|e| PyValueError::new_err(e.to_string()))?;
 
     Ok(PyDataFrame(combined_df))
 }
