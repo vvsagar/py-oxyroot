@@ -76,3 +76,7 @@ docs/_build/
 
 # Marimo cache
 __marimo__/
+
+# Large files
+*.root
+*.pq
