@@ -1,6 +1,5 @@
 use ::oxyroot::{Named, RootFile};
-use numpy::IntoPyArray;
-use pyo3::{exceptions::PyValueError, prelude::*, IntoPyObjectExt};
+use pyo3::{exceptions::PyValueError, prelude::*};
 use std::fs::File;
 use std::path::Path;
 use std::sync::Arc;
@@ -18,7 +17,7 @@ use parquet::basic::{BrotliLevel, Compression, GzipLevel, ZstdLevel};
 use parquet::file::properties::WriterProperties;
 use polars::functions::concat_df_diagonal;
 use polars::prelude::*;
-use pyo3_polars::PyDataFrame;
+use pyo3_polars::{PyDataFrame, PySeries};
 use rayon::prelude::*;
 
 static POOL: Lazy<Mutex<rayon::ThreadPool>> = Lazy::new(|| {
@@ -337,7 +336,7 @@ impl PyBranchIterator {
 
 #[pymethods]
 impl PyBranch {
-    fn array(&self, py: Python) -> PyResult<Py<PyAny>> {
+    fn array(&self) -> PyResult<PySeries> {
         let mut file =
             RootFile::open(&self.path).map_err(|e| PyValueError::new_err(e.to_string()))?;
         let tree = file
@@ -353,49 +352,49 @@ impl PyBranch {
                     .as_iter::<f32>()
                     .map_err(|e| PyValueError::new_err(e.to_string()))?
                     .collect::<Vec<_>>();
-                Ok(data.into_pyarray(py).into())
+                Ok(PySeries(Series::new((&self.name).into(), data)))
             }
             "double" => {
                 let data = branch
                     .as_iter::<f64>()
                     .map_err(|e| PyValueError::new_err(e.to_string()))?
                     .collect::<Vec<_>>();
-                Ok(data.into_pyarray(py).into())
+                Ok(PySeries(Series::new((&self.name).into(), data)))
             }
             "int32_t" => {
                 let data = branch
                     .as_iter::<i32>()
                     .map_err(|e| PyValueError::new_err(e.to_string()))?
                     .collect::<Vec<_>>();
-                Ok(data.into_pyarray(py).into())
+                Ok(PySeries(Series::new((&self.name).into(), data)))
             }
             "int64_t" => {
                 let data = branch
                     .as_iter::<i64>()
                     .map_err(|e| PyValueError::new_err(e.to_string()))?
                     .collect::<Vec<_>>();
-                Ok(data.into_pyarray(py).into())
+                Ok(PySeries(Series::new((&self.name).into(), data)))
             }
             "uint32_t" => {
                 let data = branch
                     .as_iter::<u32>()
                     .map_err(|e| PyValueError::new_err(e.to_string()))?
                     .collect::<Vec<_>>();
-                Ok(data.into_pyarray(py).into())
+                Ok(PySeries(Series::new((&self.name).into(), data)))
             }
             "uint64_t" => {
                 let data = branch
                     .as_iter::<u64>()
                     .map_err(|e| PyValueError::new_err(e.to_string()))?
                     .collect::<Vec<_>>();
-                Ok(data.into_pyarray(py).into())
+                Ok(PySeries(Series::new((&self.name).into(), data)))
             }
             "string" => {
                 let data = branch
                     .as_iter::<String>()
                     .map_err(|e| PyValueError::new_err(e.to_string()))?
                     .collect::<Vec<_>>();
-                Ok(data.into_py_any(py).unwrap())
+                Ok(PySeries(Series::new((&self.name).into(), data)))
             }
             other => Err(PyValueError::new_err(format!(
                 "Unsupported branch type: {}",

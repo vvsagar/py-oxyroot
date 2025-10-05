@@ -36,10 +36,7 @@ classifiers = [
 ]
 dynamic = ["version"]
 
-dependencies = [
-    "numpy",
-    "polars>=1.8.2",
-]
+dependencies = ["polars>=1.8.2"]
 
 [project.urls]
 Homepage = "https://github.com/vvsagar/py-oxyroot"

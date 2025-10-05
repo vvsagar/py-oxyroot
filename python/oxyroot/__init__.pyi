@@ -1,5 +1,4 @@
 from typing import Iterator, List, Optional
-import numpy as np
 import polars as pl
 
 class RootFile:
@@ -21,7 +20,7 @@ class Branch:
     path: str
     tree_name: str
     name: str
-    def array(self) -> np.ndarray: ...
+    def array(self) -> pl.Series: ...
     @property
     def typename(self) -> str: ...
 

@@ -24,7 +24,7 @@ if __name__ == '__main__':
     for branch in oxy_tree:
         # print(branch, branch.typename)
         # if branch.typename != "string":
-        oxy_values = branch.array()
+        oxy_values = branch.array().to_numpy()
         if type(oxy_values) is np.ndarray:
             print(f"Oxyroot read {branch.name} into a {type(oxy_values)} and it has a mean of {np.nanmean(oxy_values):.2f}")
         else:

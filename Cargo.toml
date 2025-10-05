@@ -12,7 +12,6 @@ crate-type = ["cdylib"]
 oxyroot = "0.1.25"
 pyo3 = { version = "0.25.0", features = ["abi3-py38"] }
 parking_lot = "0.12.3"
-numpy = "0.25.0"
 parquet = { version = "53.0.0", features = ["arrow"] }
 arrow = "53.0.0"
 polars = { version = "0.50.0", features = ["diagonal_concat"] }
